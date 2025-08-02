@@ -1,24 +1,26 @@
 import { useEffect, useState } from "react";
-import supabase from "../lib/supabase";
+import { format, addDays } from "date-fns";
+import { sv } from "date-fns/locale";
+import { supabase } from "../lib/supabase"; // Update path if needed
 
 interface Server {
   id: string;
   name: string;
-  start_date: string; // ISO-format
+  start_date: string;
 }
 
 interface Event {
   id: string;
   name: string;
-  reward: string;
-  start_date: string; // ISO-format
-  end_date: string;   // ISO-format
+  week_number: number;
+  day_offset: number;
+  duration_days: number;
 }
 
 export default function Calendar() {
   const [servers, setServers] = useState<Server[]>([]);
-  const [selectedServer, setSelectedServer] = useState<Server | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
+  const [selectedServer, setSelectedServer] = useState<Server | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -30,45 +32,30 @@ export default function Calendar() {
     fetchData();
   }, []);
 
-  const getCurrentWeekStart = (serverStartDate: string): Date => {
+  const getCurrentWeek = (startDate: string) => {
     const now = new Date();
-    const start = new Date(serverStartDate);
-    const diffWeeks = Math.floor((now.getTime() - start.getTime()) / (7 * 24 * 60 * 60 * 1000));
-    const currentWeekStart = new Date(start);
-    currentWeekStart.setDate(start.getDate() + diffWeeks * 7);
-    return currentWeekStart;
+    const start = new Date(startDate);
+    const diff = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24 * 7));
+    return diff + 1;
   };
 
-  const getWeekDates = (startDate: Date): Date[] => {
-    return Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(startDate);
-      d.setDate(d.getDate() + i);
-      return d;
-    });
+  const getEventDates = (startDate: string, week: number, dayOffset: number, duration: number) => {
+    const base = new Date(startDate);
+    const eventStart = addDays(base, (week - 1) * 7 + dayOffset);
+    const eventEnd = addDays(eventStart, duration - 1);
+    return {
+      start: eventStart,
+      end: eventEnd,
+    };
   };
 
-  const formatDate = (date: Date): string =>
-    date.toLocaleDateString("sv-SE", { weekday: "short", day: "numeric", month: "short" });
-
-  const isDateInRange = (date: Date, start: string, end: string): boolean => {
-    const d = date.toISOString().split("T")[0];
-    return d >= start && d <= end;
-  };
-
-  const currentWeekStart = selectedServer ? getCurrentWeekStart(selectedServer.start_date) : null;
-  const weekDates = currentWeekStart ? getWeekDates(currentWeekStart) : [];
-
-  const eventsThisWeek = selectedServer
-    ? events.filter((ev) =>
-        weekDates.some((d) => isDateInRange(d, ev.start_date, ev.end_date))
-      )
-    : [];
+  const filteredEvents = selectedServer ? events.filter(ev => ev.week_number === getCurrentWeek(selectedServer.start_date)) : [];
 
   return (
     <div className="bg-card p-4 rounded-lg mt-6">
-      <h2 className="text-xl mb-4">Välj server</h2>
+      <h2 className="text-xl mb-2">Välj server</h2>
       <select
-        className="bg-background text-text p-2 rounded border border-accent mb-6"
+        className="bg-background text-text p-2 rounded border border-accent mb-4"
         onChange={(e) => {
           const server = servers.find((s) => s.id === e.target.value);
           setSelectedServer(server || null);
@@ -82,29 +69,22 @@ export default function Calendar() {
         ))}
       </select>
 
-      {selectedServer && currentWeekStart && (
+      {selectedServer && (
         <div>
-          <h3 className="text-lg font-semibold mb-3">
-            Vecka från {currentWeekStart.toLocaleDateString("sv-SE")}
-          </h3>
-          <div className="grid grid-cols-7 gap-2 text-sm">
-            {weekDates.map((day, idx) => (
-              <div
-                key={idx}
-                className="bg-background border border-accent p-2 rounded min-h-[100px]"
-              >
-                <div className="font-semibold">{formatDate(day)}</div>
-                {eventsThisWeek
-                  .filter((ev) => isDateInRange(day, ev.start_date, ev.end_date))
-                  .map((ev) => (
-                    <div key={ev.id} className="mt-1 text-xs bg-accent text-white px-1 rounded">
-                      {ev.name}{" "}
-                      <span className="text-gray-200">({ev.reward})</span>
-                    </div>
-                  ))}
-              </div>
-            ))}
-          </div>
+          <h3 className="text-lg mb-4">Event för vecka {getCurrentWeek(selectedServer.start_date)}</h3>
+          <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredEvents.map((event) => {
+              const { start, end } = getEventDates(selectedServer.start_date, event.week_number, event.day_offset, event.duration_days);
+              return (
+                <li key={event.id} className="p-4 bg-background rounded shadow border border-accent">
+                  <h4 className="font-bold text-base mb-1">{event.name}</h4>
+                  <p className="text-sm text-muted-foreground">
+                    {format(start, "EEEE d MMMM", { locale: sv })} → {format(end, "EEEE d MMMM", { locale: sv })}
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
         </div>
       )}
     </div>
