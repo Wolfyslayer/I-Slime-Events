@@ -11,36 +11,29 @@ interface Event {
   id: string;
   name: string;
   reward: string;
-  start_date: string; // ISO date string
-  end_date: string;   // ISO date string
+  start_date: string;
+  end_date: string;
 }
 
 function formatDate(date: Date) {
   return date.toLocaleDateString('sv-SE', { day: 'numeric', month: 'short' });
 }
 
-// Returnerar array med 7 datum från startDate (måndag i veckan)
-function getWeekDates(weekStart: Date): Date[] {
+function getMonday(d: Date) {
+  const day = d.getDay();
+  const diff = (day === 0 ? -6 : 1) - day; // Justerar så måndag blir start
+  const monday = new Date(d);
+  monday.setHours(0, 0, 0, 0);
+  monday.setDate(monday.getDate() + diff);
+  return monday;
+}
+
+function getWeekDates(weekStart: Date) {
   return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(weekStart);
     d.setDate(d.getDate() + i);
     return d;
   });
-}
-
-// Returnerar måndagen för veckan baserat på valfritt datum
-function getMonday(d: Date) {
-  const day = d.getDay();
-  const diff = (day === 0 ? -6 : 1) - day; // justera så söndag (0) blir måndag i veckan
-  const monday = new Date(d);
-  monday.setDate(monday.getDate() + diff);
-  monday.setHours(0,0,0,0);
-  return monday;
-}
-
-// Kollar om två datumintervall överlappar
-function isOverlapping(start1: Date, end1: Date, start2: Date, end2: Date) {
-  return start1 <= end2 && end1 >= start2;
 }
 
 export default function Calendar() {
@@ -49,56 +42,67 @@ export default function Calendar() {
   const [selectedServer, setSelectedServer] = useState<Server | null>(null);
 
   useEffect(() => {
-    const fetchData = async () => {
+    async function fetchData() {
       const { data: serversData } = await supabase.from("servers").select("*");
       const { data: eventsData } = await supabase.from("events").select("*");
       setServers(serversData || []);
       setEvents(eventsData || []);
-    };
+    }
     fetchData();
   }, []);
 
-  // Beräkna aktiv vecka (måndag) baserat på serverns startdatum
-  const getActiveMonday = (startDateStr: string) => {
-    const startDate = new Date(startDateStr);
-    const now = new Date();
-    // Räkna skillnad i veckor mellan start och nu
-    const diffWeeks = Math.floor((now.getTime() - startDate.getTime()) / (1000*60*60*24*7));
-    const monday = getMonday(startDate);
-    monday.setDate(monday.getDate() + diffWeeks * 7);
-    return monday;
-  };
+  const activeMonday = selectedServer ? getMonday(new Date(selectedServer.start_date)) : null;
+  const days = activeMonday ? getWeekDates(activeMonday) : [];
 
-  // Visa 5 veckor från aktuell aktiv vecka
-  const weeksToShow = 5;
-  const activeMonday = selectedServer ? getActiveMonday(selectedServer.start_date) : null;
+  // Filtrera events som överlappar med vald vecka
+  const weekEvents = activeMonday ? events.filter(ev => {
+    const evStart = new Date(ev.start_date);
+    const evEnd = new Date(ev.end_date);
+    const weekStart = activeMonday;
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+    return evStart <= weekEnd && evEnd >= weekStart;
+  }) : [];
 
-  // Skapa array med startdatum (måndag) för varje vecka
-  const weekStartDates = activeMonday ? 
-    Array.from({ length: weeksToShow }, (_, i) => {
-      const d = new Date(activeMonday);
-      d.setDate(d.getDate() + i * 7);
-      return d;
-    }) : [];
+  // Max 3 rader, placera events utan överlappning i samma rad
+  const maxRows = 3;
+  type EventRow = Event[];
+  const eventRows: EventRow[] = [];
 
-  // För varje vecka och varje dag ska vi visa max 3 events, med överlappshantering
-  // Skapar en struktur: {[weekIndex]: {[dateString]: Event[]}}
+  function eventOverlaps(a: Event, b: Event) {
+    const aStart = new Date(a.start_date).getTime();
+    const aEnd = new Date(a.end_date).getTime();
+    const bStart = new Date(b.start_date).getTime();
+    const bEnd = new Date(b.end_date).getTime();
+    return !(aEnd < bStart || aStart > bEnd);
+  }
 
-  // Sortera events efter startdatum för enklare hantering
-  const sortedEvents = [...events].sort((a,b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
-
-  // Organisera events per datum
-  const eventsByDate: Record<string, Event[]> = {};
-
-  sortedEvents.forEach(ev => {
-    const start = new Date(ev.start_date);
-    const end = new Date(ev.end_date);
-    for(let d = new Date(start); d <= end; d.setDate(d.getDate() +1)) {
-      const key = d.toISOString().slice(0,10);
-      if(!eventsByDate[key]) eventsByDate[key] = [];
-      eventsByDate[key].push(ev);
+  weekEvents.forEach(ev => {
+    let placed = false;
+    for (let row of eventRows) {
+      if (!row.some(rEv => eventOverlaps(rEv, ev))) {
+        row.push(ev);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed && eventRows.length < maxRows) {
+      eventRows.push([ev]);
     }
   });
+
+  // Hjälpfunktion för dagindex i veckan
+  function getDayIndex(dateStr: string) {
+    const date = new Date(dateStr);
+    return days.findIndex(d => d.toDateString() === date.toDateString());
+  }
+
+  // Beräkna veckonummer (från årsskiftet)
+  function getWeekNumber(date: Date) {
+    const start = new Date(date.getFullYear(), 0, 1);
+    const diff = date.getTime() - start.getTime();
+    return Math.ceil(diff / (1000 * 60 * 60 * 24 * 7));
+  }
 
   return (
     <div className="bg-card p-4 rounded-lg mt-6 max-w-full overflow-x-auto">
@@ -116,70 +120,64 @@ export default function Calendar() {
         ))}
       </select>
 
-      {selectedServer && (
+      {selectedServer && activeMonday && (
         <div>
-          <h3 className="text-xl font-semibold mb-4">Eventkalender för {selectedServer.name}</h3>
-          <div className="min-w-[900px]">
-            {/* Veckor och dagar som tabell */}
-            <div className="grid grid-cols-8 gap-1 border border-gray-300 rounded-lg overflow-hidden">
-              {/* Första kolumnen: veckonummer */}
-              <div className="bg-accent text-background p-2 font-bold sticky left-0 z-20 text-center border-r border-gray-300">
-                Vecka
-              </div>
-              {/* Datum i toppen */}
-              {weekStartDates.length > 0 && getWeekDates(weekStartDates[0]).map((date, idx) => (
-                <div key={idx} className="bg-accent text-background p-2 font-bold text-center border-l border-gray-300 sticky top-0 z-10">
-                  {formatDate(date)}
+          <h3 className="text-xl font-semibold mb-4">Vecka {getWeekNumber(activeMonday)} från {formatDate(activeMonday)}</h3>
+          <div className="min-w-[700px] border border-gray-300 rounded-lg relative">
+            {/* Kalenderdagar */}
+            <div className="grid grid-cols-8 border-b border-gray-300">
+              <div className="p-2 font-bold bg-accent text-background sticky left-0 z-10 border-r border-gray-300">Vecka</div>
+              {days.map((day, idx) => (
+                <div
+                  key={idx}
+                  className="p-2 font-bold text-center border-l border-gray-300 sticky top-0 bg-accent text-background"
+                >
+                  {formatDate(day)}
                 </div>
               ))}
-
-              {/* Rader för varje vecka */}
-              {weekStartDates.map((weekStart, weekIdx) => {
-                const weekNumber = Math.ceil(
-                  (weekStart.getTime() - new Date(weekStart.getFullYear(),0,1).getTime()) / (1000*60*60*24*7)
-                ) + 1;
-
-                // Datum i veckan
-                const days = getWeekDates(weekStart);
-
-                return (
-                  <div key={weekIdx} className="contents">
-                    {/* Veckonummer i första kolumnen */}
-                    <div className="bg-accent text-background p-2 font-bold text-center border-t border-r border-gray-300 sticky left-0 z-20">
-                      {weekNumber}
-                    </div>
-
-                    {/* Dagsceller */}
-                    {days.map(day => {
-                      const key = day.toISOString().slice(0,10);
-                      const dayEvents = eventsByDate[key] || [];
-                      // Visa max 3 events
-                      const maxEventsToShow = 3;
-                      const extraCount = dayEvents.length - maxEventsToShow;
-
-                      return (
-                        <div key={key} className="border-t border-l border-gray-300 min-h-[80px] p-1 relative">
-                          {dayEvents.slice(0, maxEventsToShow).map(ev => (
-                            <div 
-                              key={ev.id}
-                              className="bg-accent text-background rounded px-1 py-0.5 mb-0.5 text-xs truncate cursor-pointer"
-                              title={`${ev.name} (${ev.reward})\n${ev.start_date} - ${ev.end_date}`}
-                            >
-                              {ev.name}
-                            </div>
-                          ))}
-                          {extraCount > 0 && (
-                            <div className="text-gray-500 text-xs italic mt-1">
-                              +{extraCount} till...
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )
-              })}
             </div>
+
+            {/* Veckonummer rad */}
+            <div className="grid grid-cols-8 border-b border-gray-300">
+              <div className="p-2 font-bold bg-accent text-background sticky left-0 z-10 border-r border-gray-300">
+                {getWeekNumber(activeMonday)}
+              </div>
+              <div className="col-span-7" />
+            </div>
+
+            {/* Event-rader */}
+            {eventRows.map((row, rowIndex) => (
+              <div key={rowIndex} className="relative h-10 border-b border-gray-300 grid grid-cols-7">
+                {days.map((day, dayIndex) => (
+                  <div key={dayIndex} className="border-r border-gray-300" />
+                ))}
+                {/* Event block */}
+                {row.map(ev => {
+                  const startIdx = Math.max(0, getDayIndex(ev.start_date));
+                  const endIdx = Math.min(6, getDayIndex(ev.end_date));
+                  const span = endIdx - startIdx + 1;
+
+                  return (
+                    <div
+                      key={ev.id}
+                      className="absolute bg-accent text-background rounded px-2 py-1 text-xs cursor-pointer truncate"
+                      title={`${ev.name} (${ev.reward})\n${ev.start_date} - ${ev.end_date}`}
+                      style={{
+                        left: `${(startIdx / 7) * 100}%`,
+                        width: `${(span / 7) * 100}%`,
+                        top: 0,
+                        height: '100%',
+                      }}
+                    >
+                      {ev.name}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+            {eventRows.length === 0 && (
+              <p className="p-4 text-center text-gray-500">Inga events denna vecka.</p>
+            )}
           </div>
         </div>
       )}
