@@ -40,10 +40,10 @@ export default function Calendar() {
   const upcomingWeeks = Array.from({ length: 5 }, (_, i) => ((activeWeek || 1) + i - 1) % 5 + 1);
 
   return (
-    <div className="bg-card p-4 rounded-lg mt-6">
-      <h2 className="text-xl mb-2">Välj server</h2>
+    <div className="bg-card p-6 rounded-lg mt-6 max-w-4xl mx-auto">
+      <h2 className="text-2xl font-semibold mb-4">Välj server</h2>
       <select
-        className="bg-background text-text p-2 rounded border border-accent mb-4"
+        className="bg-background text-text p-3 rounded border border-accent mb-6 w-full max-w-sm"
         onChange={(e) => {
           const server = servers.find((s) => s.id === e.target.value);
           setSelectedServer(server || null);
@@ -59,23 +59,38 @@ export default function Calendar() {
 
       {selectedServer && (
         <div>
-          <h3 className="text-lg mb-2">Eventveckor för {selectedServer.name}</h3>
-          <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+          <h3 className="text-xl font-semibold mb-4">Eventveckor för {selectedServer.name}</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
             {upcomingWeeks.map((week) => (
-              <li key={week} className="p-4 bg-background rounded shadow border border-accent">
-                <h4 className="font-bold">Vecka {week}</h4>
-                <ul className="text-sm mt-1">
+              <div
+                key={week}
+                className="bg-background rounded-lg shadow-md border border-accent p-5 flex flex-col"
+              >
+                <div className="flex items-center mb-4">
+                  <div className="flex items-center justify-center w-10 h-10 rounded-full bg-accent text-background font-bold text-lg mr-3">
+                    {week}
+                  </div>
+                  <h4 className="text-lg font-semibold">Vecka {week}</h4>
+                </div>
+                <ul className="space-y-2 flex-grow overflow-auto max-h-48">
                   {events
                     .filter((ev) => ev.week_number === week)
                     .map((ev) => (
-                      <li key={ev.id}>
-                        {ev.name} <span className="text-gray-400">({ev.reward})</span>
+                      <li
+                        key={ev.id}
+                        className="text-text flex justify-between items-center border-b border-gray-300 pb-1"
+                      >
+                        <span>{ev.name}</span>
+                        <span className="text-sm text-gray-500 italic">{ev.reward}</span>
                       </li>
                     ))}
+                  {events.filter((ev) => ev.week_number === week).length === 0 && (
+                    <li className="text-gray-400 italic">Inga event denna vecka</li>
+                  )}
                 </ul>
-              </li>
+              </div>
             ))}
-          </ul>
+          </div>
         </div>
       )}
     </div>
