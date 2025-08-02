@@ -8,21 +8,28 @@ function App() {
   const [loggedIn, setLoggedIn] = useState(false);
 
   return (
-    <div className="min-h-screen bg-background text-text p-4">
-      <h1 className="text-3xl font-bold mb-4">Game Events Viewer</h1>
+    <div className="min-h-screen bg-background text-white p-6">
+      <h1 className="text-3xl font-bold mb-4">I-Slime Events</h1>
 
+      {/* Visa inloggningsknapp om adminläge är av och ej inloggad */}
       {!adminMode && !loggedIn && (
         <button
           onClick={() => setAdminMode(true)}
-          className="bg-accent text-black px-4 py-2 rounded"
+          className="bg-accent text-black px-4 py-2 rounded mb-4"
         >
           Admin Login
         </button>
       )}
 
-      {adminMode && !loggedIn && <Auth onLogin={() => setLoggedIn(true)} />}
+      {/* Visa inloggningsformulär */}
+      {adminMode && !loggedIn && (
+        <Auth onLogin={() => setLoggedIn(true)} />
+      )}
 
+      {/* Visa kalendern alltid */}
       <Calendar />
+
+      {/* Visa adminpanelen när inloggad */}
       {loggedIn && <AdminPanel />}
     </div>
   );
