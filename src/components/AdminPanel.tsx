@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import supabase from "../lib/supabaseClient.ts";
+import supabase from "../lib/supabase";
 
 export default function AdminPanel() {
   const [servers, setServers] = useState<any[]>([]);
