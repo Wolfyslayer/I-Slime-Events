@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { format, addDays } from "date-fns";
 import { sv } from "date-fns/locale";
-import { supabase } from "../lib/supabase"; // Update path if needed
+import supabase from "../lib/supabase"; // Update path if needed
 
 interface Server {
   id: string;
