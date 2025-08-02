@@ -1,5 +1,4 @@
 import { useState } from "react";
-import supabase from "../lib/supabaseClient";
 import Auth from "./components/Auth";
 import Calendar from "./components/Calendar";
 import AdminPanel from "./components/AdminPanel";
